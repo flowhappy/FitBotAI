@@ -3,4 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="S:\anaconda3\envs\FitBot" />
   </component>
+  <component name="ProjectRootManager" version="2" project-jdk-name="/opt/anaconda3/envs/FitBot" project-jdk-type="Python SDK" />
 </project>

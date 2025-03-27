@@ -1,5 +1,7 @@
 from itertools import count
 import os
+import subprocess
+import requests
 from django.http import HttpResponse
 # from .lydcv.lyd22 import SquatDetector
 
@@ -7,6 +9,11 @@ import cv2
 import mediapipe as mp
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
+from flask import Flask
+from flask_cors import CORS
+
+app = Flask(__name__)
+CORS(app)  # 允许所有源访问
 
 mp_pose = mp.solutions.pose
 
@@ -276,17 +283,18 @@ def detect_squats(video_path, output_video_path, display=False):
     return squat_count, stage_data
 
 
-
-def main():
-    video_path = "1.mp4"
-    output_video_path = "output_video.mp4"  # 保存输出的视频文件路径
+def main(video_name):
+    # 下载视频
+    subprocess.call(['you-get', 'https://www.lloydyide.cn/fitbotAPI/uploads/'+video_name])
+    video_path = video_name #video_name
+    output_video_path = "output" + video_name # 保存输出的视频文件路径
     total_squats, action_data = detect_squats(video_path, output_video_path)
-
     print(f"总共完成了 {total_squats} 次深蹲。")
     return total_squats,action_data
 
 
 def shipin(request):
-
-    count,data = main()
+    email = request.GET.get('email')
+    video_name = requests.get('https://www.lloydyide.cn/fitbotAPI/downLoad.php', params = {"email" : email})
+    count,data = main(video_name.text)
     return HttpResponse(f"这是resPost路由的响应！count: {count},data: {data}")
