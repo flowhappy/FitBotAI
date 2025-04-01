@@ -14,6 +14,62 @@ CORS(app)  # 允许所有源访问
 
 mp_pose = mp.solutions.pose
 
+# 标准角度定义
+STANDARD_SQUAT_ANGLES = {
+    'start': {  # 站立准备姿势
+        'knee': 175,    # 膝关节接近伸直(±5°)
+        'torso': 85     # 躯干直立(±5°)
+    },
+    'end': {    # 深蹲最低点
+        'knee': 85,     # 膝关节约90°(±10°)
+        'torso': 45     # 躯干前倾约45°(±5°)
+    }
+}
+
+
+def analyze_squat_quality(user_data):
+    """智能分析深蹲质量"""
+    feedback = []
+
+    # 膝关节分析
+    user_knee_start = np.mean(user_data['start']['knee_angle'])
+    std_knee_start = STANDARD_SQUAT_ANGLES['start']['knee']
+
+    if user_knee_start < std_knee_start - 5:
+        feedback.append("起始姿势膝关节过于弯曲")
+    elif user_knee_start > std_knee_start + 5:
+        feedback.append("起始姿势膝关节未完全伸直")
+
+    # 躯干角度分析
+    user_torso_start = np.mean(user_data['start']['torso_angle'])
+    std_torso_start = STANDARD_SQUAT_ANGLES['start']['torso']
+
+    if user_torso_start < std_torso_start - 10:
+        feedback.append("起始姿势躯干过于前倾")
+    elif user_torso_start > std_torso_start + 10:
+        feedback.append("起始姿势躯干过于后仰")
+
+    # 深蹲深度分析
+    user_knee_end = np.mean(user_data['end']['knee_angle'])
+    std_knee_end = STANDARD_SQUAT_ANGLES['end']['knee']
+
+    if user_knee_end > std_knee_end + 15:
+        feedback.append("深蹲深度不足，应再蹲低些（大腿与地面平行）")
+    elif user_knee_end < std_knee_end - 15:
+        feedback.append("深蹲过深，可能对膝关节造成压力")
+
+    # 躯干稳定性分析
+    user_torso_end = np.mean(user_data['end']['torso_angle'])
+    std_torso_end = STANDARD_SQUAT_ANGLES['end']['torso']
+
+    if user_torso_end < std_torso_end - 10:
+        feedback.append("下蹲时躯干前倾过多，注意保持脊柱中立")
+    elif user_torso_end > std_torso_end + 10:
+        feedback.append("下蹲时躯干过于直立，可能导致重心后倒")
+
+    return feedback if feedback else ["动作标准，继续保持！"]
+
+
 def detect_squats(video_path, output_video_path, display=False):
 
     action_state = 'rest'
@@ -135,9 +191,12 @@ def detect_squats(video_path, output_video_path, display=False):
                             start_frame = frame_number
                             print(f"第 {squat_count + 1} 次深蹲开始于第 {start_frame} 帧")
                             current_action_data = []
+
+                            # 新增：立即记录start阶段数据（原代码缺少这部分）
+                            stage_data['start']['knee_angle'].append(average_knee_angle)
+                            stage_data['start']['torso_angle'].append(torso_angle)
+
                             stage_data['rest']['knee_angle'].append(average_knee_angle)
-                            stage_data['rest']['arm_angles'].append((left_arm_angle, right_arm_angle))
-                            stage_data['rest']['leg_angles'].append((left_leg_angle, right_leg_angle))
                             stage_data['rest']['torso_angle'].append(torso_angle)
 
                     else:
@@ -146,8 +205,6 @@ def detect_squats(video_path, output_video_path, display=False):
                 elif action_state == 'start':
                     action_state = 'moving'
                     stage_data['start']['knee_angle'].append(average_knee_angle)
-                    stage_data['start']['arm_angles'].append((left_arm_angle, right_arm_angle))
-                    stage_data['start']['leg_angles'].append((left_leg_angle, right_leg_angle))
                     stage_data['start']['torso_angle'].append(torso_angle)
 
                 elif action_state == 'moving':
@@ -161,14 +218,13 @@ def detect_squats(video_path, output_video_path, display=False):
                     }
                     current_action_data.append(frame_data)
 
-                    # stage_data['moving']['knee_angle'].append(average_knee_angle)
-                    # stage_data['moving']['arm_angles'].append((left_arm_angle, right_arm_angle))
-                    # stage_data['moving']['leg_angles'].append((left_leg_angle, right_leg_angle))
-                    # stage_data['moving']['torso_angle'].append(torso_angle)
-
                     if average_knee_angle > KNEE_ANGLE_THRESHOLD_END:
                         frame_count += 1
                         if frame_count >= FRAME_COUNT_THRESHOLD:
+                            # 记录end阶段数据（确保每次结束都执行）
+                            stage_data['end']['knee_angle'].append(average_knee_angle)
+                            stage_data['end']['torso_angle'].append(torso_angle)
+
                             action_state = 'end'
                             frame_count = 0
                             end_frame = frame_number
@@ -179,8 +235,6 @@ def detect_squats(video_path, output_video_path, display=False):
                 elif action_state == 'end':
                     action_state = 'rest'
                     stage_data['end']['knee_angle'].append(average_knee_angle)
-                    stage_data['end']['arm_angles'].append((left_arm_angle, right_arm_angle))
-                    stage_data['end']['leg_angles'].append((left_leg_angle, right_leg_angle))
                     stage_data['end']['torso_angle'].append(torso_angle)
 
                 # 输出每个阶段的平均值
@@ -188,12 +242,6 @@ def detect_squats(video_path, output_video_path, display=False):
                     if len(stage_data[action_state]['knee_angle']) > 0:
                         avg_knee = np.mean(stage_data[action_state]['knee_angle'])
                         print(f"阶段 {action_state} 膝关节角度平均值: {avg_knee:.2f}°")
-                    if len(stage_data[action_state]['arm_angles']) > 0:
-                        avg_arm = np.mean(stage_data[action_state]['arm_angles'], axis=0)
-                        print(f"阶段 {action_state} 左/右臂角度平均值: {avg_arm[0]:.2f}°, {avg_arm[1]:.2f}°")
-                    if len(stage_data[action_state]['leg_angles']) > 0:
-                        avg_leg = np.mean(stage_data[action_state]['leg_angles'], axis=0)
-                        print(f"阶段 {action_state} 左/右腿角度平均值: {avg_leg[0]:.2f}°, {avg_leg[1]:.2f}°")
                     if len(stage_data[action_state]['torso_angle']) > 0:
                         avg_torso = np.mean(stage_data[action_state]['torso_angle'])
                         print(f"阶段 {action_state} 躯干角度平均值: {avg_torso:.2f}°")
@@ -209,7 +257,10 @@ def detect_squats(video_path, output_video_path, display=False):
         out.release()
         cv2.destroyAllWindows()
 
-    return squat_count, stage_data
+        feedback = analyze_squat_quality(stage_data)
+        print("\n动作分析报告:")
+
+    return squat_count, stage_data, feedback
 
 
 def main(video_name):
@@ -217,20 +268,25 @@ def main(video_name):
     subprocess.call(['you-get', 'https://www.lloydyide.cn/fitbotAPI/uploads/'+video_name])
     video_path = video_name #video_name
     output_video_path = "output" + video_name # 保存输出的视频文件路径
-    total_squats, action_data = detect_squats(video_path, output_video_path)
-    print(f"总共完成了 {total_squats} 次深蹲。")
-    return total_squats,action_data
+    total_squats, action_data, feedback = detect_squats(video_path, output_video_path)
+
+
+    return total_squats,action_data, feedback
+
 
 
 def shipin(request):
 
-    # todo 增加对比动作的功能
-    # 根据三个状态：起始、运动中、结束来分析动作
-    # 起始和结束采用平均值对比
-    # 运动中再议
-
-
     email = request.GET.get('email')
     video_name = requests.get('https://www.lloydyide.cn/fitbotAPI/downLoad.php', params = {"email" : email})
-    count,data = main(video_name.text)
-    return HttpResponse(f"这是resPost路由的响应！count: {count},data: {data}")
+    count,data,feedback = main(video_name.text)
+    for i, comment in enumerate(feedback, 1):
+        print(f"{i}. {comment}")
+    return HttpResponse(
+        '\n'.join(f'<div style="padding:10px;margin:6px 0;'
+                  f'background:#fff;border-radius:6px;'
+                  f'border-left:4px solid '
+                  f'{"#07C160" if "良好" in item else "#F0AD4E" if "注意" in item else "#DD524D"};"'
+                  f'>{item}</div>'
+                  for item in feedback)
+    )
