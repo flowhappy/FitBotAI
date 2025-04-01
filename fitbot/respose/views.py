@@ -274,19 +274,87 @@ def main(video_name):
     return total_squats,action_data, feedback
 
 
-
 def shipin(request):
-
     email = request.GET.get('email')
-    video_name = requests.get('https://www.lloydyide.cn/fitbotAPI/downLoad.php', params = {"email" : email})
-    count,data,feedback = main(video_name.text)
-    for i, comment in enumerate(feedback, 1):
-        print(f"{i}. {comment}")
-    return HttpResponse(
-        '\n'.join(f'<div style="padding:10px;margin:6px 0;'
-                  f'background:#fff;border-radius:6px;'
-                  f'border-left:4px solid '
-                  f'{"#07C160" if "良好" in item else "#F0AD4E" if "注意" in item else "#DD524D"};"'
-                  f'>{item}</div>'
-                  for item in feedback)
-    )
+    video_name = requests.get('https://www.lloydyide.cn/fitbotAPI/downLoad.php', params={"email": email})
+    count, data, feedback = main(video_name.text)
+
+    # 构建完整的HTML响应
+    html_content = f"""
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                max-width: 600px;
+                margin: 0 auto;
+                padding: 15px;
+                background: #f8f9fa;
+                border-radius: 12px;">
+
+        <!-- 反馈建议部分 -->
+        <div style="margin-bottom: 20px;">
+            <h3 style="color: #333; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 8px;">
+                <span style="display: inline-block; width: 24px; height: 24px; background: #07C160; 
+                            color: white; text-align: center; border-radius: 50%; margin-right: 8px;">✓</span>
+                动作分析报告
+            </h3>
+            {"".join(
+        f'<div style="padding:12px; margin:8px 0; background:#fff; border-radius:8px;'
+        f'box-shadow:0 1px 3px rgba(0,0,0,0.1); border-left:4px solid '
+        f'{"#07C160" if "标准" in item else "#F0AD4E" if "建议" in item else "#DD524D"};'
+        f'">{item}</div>'
+        for item in feedback
+    )}
+        </div>
+
+        <!-- 深蹲数据详情 -->
+        <div style="background: white; border-radius: 10px; padding: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+            <h3 style="color: #333; margin-top: 0; margin-bottom: 15px;">
+                <span style="display: inline-block; width: 24px; height: 24px; background: #007AFF; 
+                            color: white; text-align: center; border-radius: 50%; margin-right: 8px;">🔍</span>
+                详细运动数据
+            </h3>
+    """
+
+    # 添加每个深蹲的数据
+    for i in range(count):
+        start_data = {
+            'knee': np.mean(data['start']['knee_angle']),
+            'torso': np.mean(data['start']['torso_angle'])
+        }
+        end_data = {
+            'knee': np.mean(data['end']['knee_angle']),
+            'torso': np.mean(data['end']['torso_angle'])
+        }
+
+        html_content += f"""
+        <div style="margin-bottom: 15px; padding: 12px; background: #f8f9fa; border-radius: 8px;">
+            <div style="font-weight: 600; color: #007AFF; margin-bottom: 8px;">第 {i + 1} 次深蹲</div>
+            <div style="display: flex; justify-content: space-between;">
+                <div style="flex: 1; padding: 8px; background: rgba(0,122,255,0.05); border-radius: 6px;">
+                    <div style="margin-top: 4px;">
+                        <span style="font-size: 12px; color: #888;">膝盖:</span> 
+                        <span style="font-weight: 500;">{data['start']['knee_angle'][i]:.1f}°</span>
+                    </div>
+                    <div>
+                        <span style="font-size: 12px; color: #888;">躯干:</span> 
+                        <span style="font-weight: 500;">{data['start']['torso_angle'][i]:.1f}°</span>
+                    </div>
+                </div>
+                <div style="flex: 1; padding: 8px; background: rgba(0,122,255,0.05); border-radius: 6px; margin-left: 10px;">
+                    <div style="margin-top: 4px;">
+                        <span style="font-size: 12px; color: #888;">膝盖:</span> 
+                        <span style="font-weight: 500;">{data['end']['knee_angle'][i]:.1f}°</span>
+                    </div>
+                    <div>
+                        <span style="font-size: 12px; color: #888;">躯干:</span> 
+                        <span style="font-weight: 500;">{data['end']['torso_angle'][i]:.1f}°</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        """
+
+    html_content += """
+        </div>
+    </div>
+    """
+
+    return HttpResponse(html_content)
