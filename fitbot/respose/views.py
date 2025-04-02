@@ -67,7 +67,10 @@ def analyze_squat_quality(user_data):
     elif user_torso_end > std_torso_end + 10:
         feedback.append("下蹲时躯干过于直立，可能导致重心后倒")
 
-    return feedback if feedback else ["动作标准，继续保持！"]
+    # todo 计算动作准确率
+    accuracy = 1
+
+    return feedback if feedback else ["动作标准，继续保持！"], accuracy
 
 
 def detect_squats(video_path, output_video_path, display=False):
@@ -257,27 +260,32 @@ def detect_squats(video_path, output_video_path, display=False):
         out.release()
         cv2.destroyAllWindows()
 
-        feedback = analyze_squat_quality(stage_data)
+        feedback,analysis_result = analyze_squat_quality(stage_data)
         print("\n动作分析报告:")
 
-    return squat_count, stage_data, feedback
+    return squat_count, stage_data, feedback, analysis_result
 
 
 def main(video_name):
     # 下载视频
     subprocess.call(['you-get', 'https://www.lloydyide.cn/fitbotAPI/uploads/'+video_name])
     video_path = video_name #video_name
+    cap = cv2.VideoCapture(video_path)
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    video_duration = frame_count / fps  # 计算视频时长（秒）
+    cap.release()
     output_video_path = "output" + video_name # 保存输出的视频文件路径
-    total_squats, action_data, feedback = detect_squats(video_path, output_video_path)
+    total_squats, action_data, feedback, analysis_result = detect_squats(video_path, output_video_path)
 
 
-    return total_squats,action_data, feedback
+    return total_squats,action_data, feedback, analysis_result, video_duration
 
 
 def shipin(request):
     email = request.GET.get('email')
     video_name = requests.get('https://www.lloydyide.cn/fitbotAPI/downLoad.php', params={"email": email})
-    count, data, feedback = main(video_name.text)
+    count, data, feedback, analysis_result, video_duration = main(video_name.text)
 
     # 构建完整的HTML响应
     html_content = f"""
@@ -295,6 +303,16 @@ def shipin(request):
                             color: white; text-align: center; border-radius: 50%; margin-right: 8px;">✓</span>
                 动作分析报告
             </h3>
+                <div>
+        <div style="background: #f8f9fa;border-radius: 10px;flex: 1;box-shadow: 0 2px 5px rgba(0,0,0,0.1);padding:5rpx">
+            <span style="display: block;color: #6c757d;font-size: 10rpx;">动作准确率</span>
+            <span style="display: block;font-size: 10rpx;font-weight: bold;color: #343a40;margin-top: 5px;">{analysis_result}</span>
+        </div>
+        <div style="background: #f8f9fa;border-radius: 10px;flex: 1;box-shadow: 0 2px 5px rgba(0,0,0,0.1);padding:5rpx;margin-top:5rpx">
+            <span style="display: block;color: #6c757d;font-size: 10rpx;">视频时长</span>
+            <span style="display: block;font-size: 10rpx;font-weight: bold;color: #343a40;margin-top: 5px;">{video_duration}</span>
+        </div>
+    </div>
             {"".join(
         f'<div style="padding:12px; margin:8px 0; background:#fff; border-radius:8px;'
         f'box-shadow:0 1px 3px rgba(0,0,0,0.1); border-left:4px solid '
