@@ -172,7 +172,7 @@ def detect_pushups(video_path, output_video_path, display=False):
                 draw.text((50, 260), f'左腿-躯干角度: {int(left_leg_angle)}°', font=font, fill=(255, 255, 255))
                 draw.text((50, 290), f'右腿-躯干角度: {int(right_leg_angle)}°', font=font, fill=(255, 255, 255))
                 draw.text((50, 320), f'躯干倾斜角度: {int(torso_angle)}°', font=font, fill=(255, 255, 0))
-                draw.text((50, 100), f'深蹲次数: {pushup_count}', font=font, fill=(0, 0, 255))
+                draw.text((50, 100), f'俯卧撑次数: {pushup_count}', font=font, fill=(0, 0, 255))
 
                 image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
 
@@ -184,7 +184,7 @@ def detect_pushups(video_path, output_video_path, display=False):
                             action_state = 'start'
                             frame_count = 0
                             start_frame = frame_number
-                            print(f"第 {pushup_count + 1} 次深蹲开始于第 {start_frame} 帧")
+                            print(f"第 {pushup_count + 1} 次俯卧撑开始于第 {start_frame} 帧")
                             current_action_data = []
 
                             # 新增：立即记录start阶段数据（原代码缺少这部分）
@@ -224,7 +224,7 @@ def detect_pushups(video_path, output_video_path, display=False):
                             frame_count = 0
                             end_frame = frame_number
                             pushup_count += 1
-                            print(f"第 {pushup_count} 次深蹲结束于第 {end_frame} 帧")
+                            print(f"第 {pushup_count} 次俯卧撑结束于第 {end_frame} 帧")
                             action_data.extend(current_action_data)
 
                 elif action_state == 'end':
@@ -247,7 +247,7 @@ def detect_pushups(video_path, output_video_path, display=False):
             else:
                 print(f"在第 {frame_number} 帧未检测到关键点。")
 
-        print(f"总共完成了 {pushup_count} 次深蹲。")
+        print(f"总共完成了 {pushup_count} 次俯卧撑。")
         cap.release()
         out.release()
         cv2.destroyAllWindows()
@@ -314,7 +314,7 @@ def shipin(request):
     )}
         </div>
 
-        <!-- 深蹲数据详情 -->
+        <!-- 俯卧撑数据详情 -->
         <div style="background: white; border-radius: 10px; padding: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
             <h3 style="color: #333; margin-top: 0; margin-bottom: 15px;">
                 <span style="display: inline-block; width: 24px; height: 24px; background: #007AFF; 
@@ -323,7 +323,7 @@ def shipin(request):
             </h3>
     """
 
-    # 添加每个深蹲的数据
+    # 添加每个俯卧撑的数据
     for i in range(count):
         start_data = {
             'knee': np.mean(data['start']['elbow_angle']),
