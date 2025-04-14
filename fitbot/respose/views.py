@@ -1,3 +1,4 @@
+import datetime
 import subprocess
 import requests
 from django.http import HttpResponse
@@ -26,51 +27,124 @@ STANDARD_SQUAT_ANGLES = {
     }
 }
 
+# 从你的 if 条件中提取的容差值
+TOLERANCES = {
+    'start': {'knee': 5, 'torso': 10},
+    'end': {'knee': 15, 'torso': 10}
+}
+
+# 定义一个最大允许偏差的乘数，用于计算准确率得分
+# 例如，如果偏差超过容差的 2.5 倍，准确率得分就为 0
+MAX_DEVIATION_MULTIPLIER = 10
+
+def calculate_score(deviation, tolerance, max_deviation_multiplier):
+    """根据偏差计算单项得分 (0.0 到 1.0)"""
+    if deviation <= tolerance:
+        # 在容差范围内，满分
+        return 1.0
+    else:
+        # 计算最大允许偏差
+        max_allowed_deviation = tolerance * max_deviation_multiplier
+        if deviation >= max_allowed_deviation:
+            # 偏差过大，得分为 0
+            return 0.0
+        else:
+            # 偏差在容差和最大允许偏差之间，得分线性下降
+            # score = 1.0 - (当前超出容差的部分 / 容差到最大偏差的总范围)
+            score = 1.0 - (deviation - tolerance) / (max_allowed_deviation - tolerance)
+            # 确保得分不会低于0 (虽然理论上不会)
+            return max(0.0, score)
+
 
 def analyze_squat_quality(user_data):
     """智能分析深蹲质量"""
     feedback = []
+    total_score = 0.0  # 用于累加各项得分
+    total_checks = 0  # 用于记录总共执行的检查项目数
 
-    # 膝关节分析
-    user_knee_start = np.mean(user_data['start']['knee_angle'])
-    std_knee_start = STANDARD_SQUAT_ANGLES['start']['knee']
+    # --- 检查 1: 起始膝关节角度 ---
+    if user_data['start']['knee_angle']:
+        user_knee_start = np.mean(user_data['start']['knee_angle'])
+        std_knee_start = STANDARD_SQUAT_ANGLES['start']['knee']
+        tolerance_knee_start = TOLERANCES['start']['knee']
+        total_checks += 1
 
-    if user_knee_start < std_knee_start - 5:
-        feedback.append("起始姿势膝关节过于弯曲")
-    elif user_knee_start > std_knee_start + 5:
-        feedback.append("起始姿势膝关节未完全伸直")
+        # 生成反馈 (使用严格的容差)
+        if user_knee_start < std_knee_start - tolerance_knee_start:
+            feedback.append("起始姿势膝关节过于弯曲")
+        elif user_knee_start > std_knee_start + tolerance_knee_start:
+            feedback.append("起始姿势膝关节未完全伸直")
 
-    # 躯干角度分析
-    user_torso_start = np.mean(user_data['start']['torso_angle'])
-    std_torso_start = STANDARD_SQUAT_ANGLES['start']['torso']
+        # 计算得分 (使用基于偏差的方法)
+        deviation_knee_start = abs(user_knee_start - std_knee_start)
+        score_knee_start = calculate_score(deviation_knee_start, tolerance_knee_start, MAX_DEVIATION_MULTIPLIER)
+        total_score += score_knee_start
 
-    if user_torso_start < std_torso_start - 10:
-        feedback.append("起始姿势躯干过于前倾")
-    elif user_torso_start > std_torso_start + 10:
-        feedback.append("起始姿势躯干过于后仰")
+    # --- 检查 2: 起始躯干角度 ---
+    if user_data['start']['torso_angle']:
+        user_torso_start = np.mean(user_data['start']['torso_angle'])
+        std_torso_start = STANDARD_SQUAT_ANGLES['start']['torso']
+        tolerance_torso_start = TOLERANCES['start']['torso']
+        total_checks += 1
 
-    # 深蹲深度分析
-    user_knee_end = np.mean(user_data['end']['knee_angle'])
-    std_knee_end = STANDARD_SQUAT_ANGLES['end']['knee']
+        # 生成反馈 (使用严格的容差)
+        if user_torso_start < std_torso_start - tolerance_torso_start:
+            feedback.append("起始姿势躯干过于前倾")
+        elif user_torso_start > std_torso_start + tolerance_torso_start:
+            feedback.append("起始姿势躯干过于后仰")
 
-    if user_knee_end > std_knee_end + 15:
-        feedback.append("深蹲深度不足，应再蹲低些（大腿与地面平行）")
-    elif user_knee_end < std_knee_end - 15:
-        feedback.append("深蹲过深，可能对膝关节造成压力")
+        # 计算得分 (使用基于偏差的方法)
+        deviation_torso_start = abs(user_torso_start - std_torso_start)
+        score_torso_start = calculate_score(deviation_torso_start, tolerance_torso_start, MAX_DEVIATION_MULTIPLIER)
+        total_score += score_torso_start
 
-    # 躯干稳定性分析
-    user_torso_end = np.mean(user_data['end']['torso_angle'])
-    std_torso_end = STANDARD_SQUAT_ANGLES['end']['torso']
+    # --- 检查 3: 结束膝关节角度 (深度) ---
+    if user_data['end']['knee_angle']:
+        user_knee_end = np.mean(user_data['end']['knee_angle'])
+        std_knee_end = STANDARD_SQUAT_ANGLES['end']['knee']
+        tolerance_knee_end = TOLERANCES['end']['knee']
+        total_checks += 1
 
-    if user_torso_end < std_torso_end - 10:
-        feedback.append("下蹲时躯干前倾过多，注意保持脊柱中立")
-    elif user_torso_end > std_torso_end + 10:
-        feedback.append("下蹲时躯干过于直立，可能导致重心后倒")
+        # 生成反馈 (使用严格的容差)
+        if user_knee_end > std_knee_end + tolerance_knee_end:
+            feedback.append("深蹲深度不足，应再蹲低些（大腿与地面平行）")
+        elif user_knee_end < std_knee_end - tolerance_knee_end:
+            feedback.append("深蹲过深，可能对膝关节造成压力")  # 你可以根据需要保留或移除此反馈
 
-    # todo 计算动作准确率
-    accuracy = 1
+        # 计算得分 (使用基于偏差的方法)
+        deviation_knee_end = abs(user_knee_end - std_knee_end)
+        score_knee_end = calculate_score(deviation_knee_end, tolerance_knee_end, MAX_DEVIATION_MULTIPLIER)
+        total_score += score_knee_end
 
-    return feedback if feedback else ["动作标准，继续保持！"], accuracy
+    # --- 检查 4: 结束躯干角度 (稳定性) ---
+    if user_data['end']['torso_angle']:
+        user_torso_end = np.mean(user_data['end']['torso_angle'])
+        std_torso_end = STANDARD_SQUAT_ANGLES['end']['torso']
+        tolerance_torso_end = TOLERANCES['end']['torso']
+        total_checks += 1
+
+        # 生成反馈 (使用严格的容差)
+        if user_torso_end < std_torso_end - tolerance_torso_end:
+            feedback.append("下蹲时躯干前倾过多，注意保持脊柱中立")
+        elif user_torso_end > std_torso_end + tolerance_torso_end:
+            feedback.append("下蹲时躯干过于直立，可能导致重心后倒")
+
+        # 计算得分 (使用基于偏差的方法)
+        deviation_torso_end = abs(user_torso_end - std_torso_end)
+        score_torso_end = calculate_score(deviation_torso_end, tolerance_torso_end, MAX_DEVIATION_MULTIPLIER)
+        total_score += score_torso_end
+
+    # --- 计算最终准确率 ---
+    if total_checks > 0:
+        # 最终准确率 = 总得分 / 总检查数 (得到一个 0.0 到 1.0 之间的值)
+        accuracy = total_score / total_checks
+    else:
+        accuracy = 100  # 如果没有进行任何检查，准确率设为 0
+
+    final_feedback = feedback if feedback else ["动作标准，继续保持！"]  # 保留原来的默认反馈逻辑
+    accuracy = round(accuracy, 2)
+    # 返回反馈列表和计算出的准确率
+    return final_feedback, accuracy
 
 
 def detect_squats(video_path, output_video_path, display=False):
@@ -286,6 +360,12 @@ def shipin(request):
     email = request.GET.get('email')
     video_name = requests.get('https://www.lloydyide.cn/fitbotAPI/downLoad.php', params={"email": email})
     count, data, feedback, analysis_result, video_duration = main(video_name.text)
+    video_duration = round(video_duration, 2)
+
+    #todo 完成质量的上传
+
+    requests.post('https://www.lloydyide.cn/fitbotAPI/update_umi.php',
+                             data={'email': email, 'accuracy': analysis_result, 'time': video_duration,'month':datetime.date.today().month})
 
     # 构建完整的HTML响应
     html_content = f"""
